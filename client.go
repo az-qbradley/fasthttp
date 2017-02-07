@@ -1111,7 +1111,7 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 		}
 	}
 
-	if !req.Header.IsGet() && req.Header.IsHead() {
+	if (!req.Header.IsGet() && req.Header.IsHead()) || req.HandlingBodyManually {
 		resp.SkipBody = true
 	}
 	if c.DisableHeaderNamesNormalizing {
@@ -1122,15 +1122,26 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 	if err = resp.ReadLimitBody(br, c.MaxResponseBodySize); err != nil {
 		c.releaseReader(br)
 		c.closeConn(cc)
-		return true, err
+		if err == io.EOF {
+			return true, err
+		}
+		return false, err
 	}
-	c.releaseReader(br)
 
-	if resetConnection || req.ConnectionClose() || resp.ConnectionClose() {
-		c.closeConn(cc)
+	shouldClose := resetConnection || req.ConnectionClose() || resp.ConnectionClose()
+	if req.HandlingBodyManually {
+		resp.manualBodyReader = c.manualBodyReadAccessor(br, cc, shouldClose)
 	} else {
-		c.releaseConn(cc)
+		c.releaseReader(br)
+
+		if shouldClose {
+			c.closeConn(cc)
+		} else {
+			c.releaseConn(cc)
+		}
 	}
+
+
 
 	return false, err
 }
@@ -1399,6 +1410,32 @@ func (c *HostClient) nextAddr() string {
 	}
 	c.addrsLock.Unlock()
 	return addr
+}
+
+func (c *HostClient) manualBodyReadAccessor(connReader *bufio.Reader, conn *clientConn, shouldClose bool) io.ReadCloser {
+	return &manualBodyReadAccessor{
+		hostClient:c,
+		Reader:connReader,
+		conn:conn,
+		shouldClose:shouldClose,
+	}
+}
+
+type manualBodyReadAccessor struct {
+	hostClient *HostClient
+	*bufio.Reader
+	conn *clientConn
+	shouldClose bool
+}
+
+func (r *manualBodyReadAccessor) Close() error {
+	r.hostClient.releaseReader(r.Reader)
+	if r.shouldClose {
+		r.hostClient.closeConn(r.conn)
+	} else {
+		r.hostClient.releaseConn(r.conn)
+	}
+	return nil
 }
 
 func (c *HostClient) dialHostHard() (conn net.Conn, err error) {

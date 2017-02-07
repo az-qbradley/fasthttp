@@ -42,7 +42,7 @@ type Request struct {
 	parsedPostArgs bool
 
 	keepBodyBuffer bool
-
+	HandlingBodyManually bool
 	isTLS bool
 }
 
@@ -72,6 +72,7 @@ type Response struct {
 	SkipBody bool
 
 	keepBodyBuffer bool
+	manualBodyReader io.ReadCloser
 }
 
 // SetHost sets host for the request.
@@ -443,6 +444,7 @@ func (resp *Response) ResetBody() {
 			resp.body = nil
 		}
 	}
+	resp.manualBodyReader = nil
 }
 
 // ReleaseBody retires the response body if it is greater than "size" bytes.
@@ -1422,6 +1424,10 @@ func (req *Request) String() string {
 // Use Write instead of String for performance-critical code.
 func (resp *Response) String() string {
 	return getHTTPString(resp)
+}
+
+func (resp *Response) ManualBodyReader() io.ReadCloser {
+	return resp.manualBodyReader
 }
 
 func getHTTPString(hw httpWriter) string {
