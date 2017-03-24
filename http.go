@@ -603,6 +603,7 @@ func (req *Request) copyToSkipBody(dst *Request) {
 	req.postArgs.CopyTo(&dst.postArgs)
 	dst.parsedPostArgs = req.parsedPostArgs
 	dst.isTLS = req.isTLS
+	dst.HandlingBodyManually = req.HandlingBodyManually
 
 	// do not copy multipartForm - it will be automatically
 	// re-created on the first call to MultipartForm.
@@ -622,6 +623,7 @@ func (resp *Response) copyToSkipBody(dst *Response) {
 	dst.Reset()
 	resp.Header.CopyTo(&dst.Header)
 	dst.SkipBody = resp.SkipBody
+	dst.manualBodyReader = resp.manualBodyReader
 }
 
 func swapRequestBody(a, b *Request) {
